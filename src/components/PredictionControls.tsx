@@ -1,15 +1,49 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
+import PredictionHelpTooltip from "./PredictionHelpTooltip";
 import "./PredictionCard.css";
 
 const EXACT_PRICE_MIN = 0.0001;
 const EXACT_PRICE_MAX = 10.0;
 const EXACT_PRICE_DECIMAL_PLACES = 4;
 
+function parseBalance(balance: string | null | undefined): number {
+  if (!balance) return 0;
+  const numericPart = balance.replace(' XLM', '');
+  return parseFloat(numericPart) || 0;
+}
+
+function computePresetStake(balanceStr: string | null | undefined, percentage: number): string {
+  const available = parseBalance(balanceStr);
+  if (available <= 0) return '';
+  const raw = available * percentage;
+  const factor = 10000;
+  const truncated = Math.floor(raw * factor + 1e-9) / factor;
+  const safeAmount = Math.min(truncated, available);
+  return Number(safeAmount.toFixed(4)).toString();
+}
+
+function validateStake(value: string, walletBalance: string | null | undefined): string | null {
+  if (!value.trim()) return 'Enter a stake amount';
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount <= 0) return 'Stake must be greater than 0';
+  
+  const availableBalance = parseBalance(walletBalance);
+  if (amount > availableBalance) {
+    return `Stake exceeds available balance (${walletBalance || '0.00 XLM'})`;
+  }
+  
+  return null;
+}
+
 export interface PredictionData {
   direction: "UP" | "DOWN";
   stake: string;
   exactPrice?: string;
   isLegend: boolean;
+  /** Share of the UP/DOWN pool held by each side (0-100). Present only for
+   *  UP/DOWN rounds; lets the BetModal surface the pool-imbalance warning. */
+  poolUpPct?: number;
+  poolDownPct?: number;
 }
 
 export interface PredictionControlsProps {
@@ -20,6 +54,7 @@ export interface PredictionControlsProps {
   /** Prediction submit in flight (distinct from wallet connecting). */
   isSubmittingPrediction?: boolean;
   onPrediction?: (prediction: PredictionData) => void;
+  walletBalance?: string | null;
 }
 
 function validateExactPrice(value: string): string | null {
@@ -27,7 +62,7 @@ function validateExactPrice(value: string): string | null {
   const num = parseFloat(value);
   if (Number.isNaN(num)) return "Must be a valid number";
   if (num < EXACT_PRICE_MIN || num > EXACT_PRICE_MAX) {
-    return `Must be between ${EXACT_PRICE_MIN} and ${EXACT_PRICE_MAX}`;
+    return `Must be between ${EXACT_PRICE_MIN} and ${EXACT_PRICE_MAX.toFixed(1)}`;
   }
   const parts = value.split(".");
   if (parts.length === 2 && parts[1].length > EXACT_PRICE_DECIMAL_PLACES) {
@@ -42,6 +77,7 @@ export function PredictionControls({
   isConnecting = false,
   isSubmittingPrediction = false,
   onPrediction,
+  walletBalance,
 }: PredictionControlsProps) {
   const [stake, setStake] = useState("");
   const [isLegend, setIsLegend] = useState(false);
@@ -49,9 +85,20 @@ export function PredictionControls({
   const [exactPriceError, setExactPriceError] = useState<string | null>(null);
   const [selectedDirection, setSelectedDirection] = useState<"UP" | "DOWN" | null>(null);
   const [touchedExactPrice, setTouchedExactPrice] = useState(false);
+  const [stakeError, setStakeError] = useState<string | null>(null);
+
+  // Internal idempotency guard: blocks a second prediction submit while the
+  // first is still in flight (before the parent's isSubmittingPrediction state
+  // has propagated). Prevents double-submit races on rapid/cluster clicks.
+  const inFlightRef = useRef(false);
+  const [isSubmittingInternal, setIsSubmittingInternal] = useState(false);
+
+  const isSubmitting = isSubmittingPrediction || isSubmittingInternal;
 
   const isDisabled =
-    !isWalletConnected || !isRoundActive || isConnecting || isSubmittingPrediction;
+    !isWalletConnected || !isRoundActive || isConnecting || isSubmitting;
+  const availableBalance = parseBalance(walletBalance);
+  const arePresetsDisabled = isDisabled || !isWalletConnected || availableBalance <= 0;
 
   const validateExactPriceField = useCallback(() => {
     if (!isLegend) return;
@@ -71,18 +118,40 @@ export function PredictionControls({
     }
   };
 
-  const handleFillClick = () => {
-    setStake("1000");
+  const handleStakeChange = (value: string) => {
+    setStake(value);
+    const error = validateStake(value, walletBalance);
+    setStakeError(error);
+  };
+
+  const handlePresetClick = (percentage: number) => {
+    const calculatedStake = computePresetStake(walletBalance, percentage);
+    handleStakeChange(calculatedStake);
   };
 
   const handlePrediction = (direction: "UP" | "DOWN") => {
     if (isDisabled || !stake) return;
 
+    // Acquire the internal in-flight lock. If a submit is already in progress
+    // (or hasn't been released yet), drop the duplicate click immediately.
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
+
+    const stakeValidationError = validateStake(stake, walletBalance);
+    if (stakeValidationError) {
+      setStakeError(stakeValidationError);
+      inFlightRef.current = false;
+      return;
+    }
+
     if (isLegend) {
       setTouchedExactPrice(true);
       const error = validateExactPrice(exactPrice);
       setExactPriceError(error);
-      if (error) return;
+      if (error) {
+        inFlightRef.current = false;
+        return;
+      }
     }
 
     const predictionData: PredictionData = {
@@ -93,30 +162,37 @@ export function PredictionControls({
     };
 
     setSelectedDirection(direction);
+    setIsSubmittingInternal(true);
     onPrediction?.(predictionData);
 
     setTimeout(() => {
+      inFlightRef.current = false;
+      setIsSubmittingInternal(false);
       setStake("");
       setExactPrice("");
       setExactPriceError(null);
+      setStakeError(null);
       setIsLegend(false);
       setSelectedDirection(null);
       setTouchedExactPrice(false);
     }, 500);
   };
 
-  const canSubmit = Boolean(stake) && (!isLegend || (exactPrice && !exactPriceError));
+  const canSubmit = Boolean(stake) && !stakeError && (!isLegend || (exactPrice && !exactPriceError));
 
   return (
     <>
-      <h2 className="prediction-card__title">Guess price prediction</h2>
+      <div className="flex items-center justify-center gap-2 mb-7">
+        <h2 className="prediction-card__title" style={{ margin: 0 }}>Guess price prediction</h2>
+        <PredictionHelpTooltip />
+      </div>
 
       {isConnecting && (
         <p className="prediction-card__connecting" role="status">
           Connecting wallet...
         </p>
       )}
-      {isSubmittingPrediction && !isConnecting && (
+      {isSubmitting && !isConnecting && (
         <p className="prediction-card__connecting" role="status">
           Submitting prediction...
         </p>
@@ -161,21 +237,46 @@ export function PredictionControls({
             className="prediction-card__input"
             placeholder="Enter amount"
             value={stake}
-            onChange={(e) => setStake(e.target.value)}
+            onChange={(e) => handleStakeChange(e.target.value)}
             disabled={isDisabled}
             min="0"
             step="0.01"
           />
-          <button
-            type="button"
-            className="prediction-card__fill-button"
-            onClick={handleFillClick}
-            disabled={isDisabled}
-            title="Fill with wallet balance"
-          >
-            Fill
-          </button>
+          <div className="prediction-card__preset-buttons" role="group" aria-label="Stake presets">
+            <button
+              type="button"
+              className="prediction-card__preset-button"
+              onClick={() => handlePresetClick(0.25)}
+              disabled={arePresetsDisabled}
+              aria-label="Set stake to 25% of balance"
+            >
+              25%
+            </button>
+            <button
+              type="button"
+              className="prediction-card__preset-button"
+              onClick={() => handlePresetClick(0.5)}
+              disabled={arePresetsDisabled}
+              aria-label="Set stake to 50% of balance"
+            >
+              50%
+            </button>
+            <button
+              type="button"
+              className="prediction-card__preset-button"
+              onClick={() => handlePresetClick(1.0)}
+              disabled={arePresetsDisabled}
+              aria-label="Set stake to Max available balance"
+            >
+              Max
+            </button>
+          </div>
         </div>
+        {stakeError && (
+          <p className="prediction-card__exact-price-error" role="alert">
+            {stakeError}
+          </p>
+        )}
       </div>
 
       <div className="prediction-card__toggle-section">
@@ -232,7 +333,7 @@ export function PredictionControls({
         </div>
       )}
 
-      {isDisabled && !isConnecting && !isSubmittingPrediction && (
+      {isDisabled && !isConnecting && !isSubmitting && (
         <div className="prediction-card__disabled-message">
           {!isWalletConnected && <p>Connect your wallet to make predictions</p>}
           {isWalletConnected && !isRoundActive && <p>This round is not active</p>}

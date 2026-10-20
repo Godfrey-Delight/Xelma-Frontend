@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import LearnPage from './Learn';
 import { educationApi } from '../lib/api-client';
@@ -68,8 +68,8 @@ describe('LearnPage', () => {
 
         await waitFor(() => {
             expect(screen.getByText('How to Predict')).toBeInTheDocument();
-            expect(screen.getByText(/Always check the chart/i)).toBeInTheDocument();
         });
+        expect(screen.getByText(/Always check the chart/i)).toBeInTheDocument();
     });
 
     it('renders empty states when no content is returned', async () => {
@@ -80,8 +80,8 @@ describe('LearnPage', () => {
 
         await waitFor(() => {
             expect(screen.getByText(/No guides available/i)).toBeInTheDocument();
-            expect(screen.getByText(/No tip today/i)).toBeInTheDocument();
         });
+        expect(screen.getByText(/No tip today/i)).toBeInTheDocument();
     });
 
     it('renders error state when both requests fail', async () => {
@@ -103,7 +103,7 @@ describe('LearnPage', () => {
 
         await waitFor(() => {
             expect(screen.getByText('How to Predict')).toBeInTheDocument();
-            expect(screen.getByText(/No tip today/i)).toBeInTheDocument();
         });
+        expect(screen.getByText(/No tip today/i)).toBeInTheDocument();
     });
 });

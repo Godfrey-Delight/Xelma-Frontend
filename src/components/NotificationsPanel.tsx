@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { useNotificationsStore } from '../store/useNotificationsStore';
-import { Clock, Check } from './icons';
+import { Check } from './icons';
 import { LoadingState, ErrorState, EmptyState } from './ui/StatusStates';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 
@@ -16,8 +16,9 @@ const NotificationsPanel: React.FC<{ id: string; onClose: () => void }> = ({
   const loadingList = useNotificationsStore((s) => s.loadingList);
   const errorList = useNotificationsStore((s) => s.errorList);
   const markAsRead = useNotificationsStore((s) => s.markAsRead);
+  const markAllAsRead = useNotificationsStore((s) => s.markAllAsRead);
   const fetchList = useNotificationsStore((s) => s.fetchList);
-  const unreadCount = list.filter((notification) => !notification.read).length;
+  const hasUnread = list.some((n) => !n.read);
 
   useEffect(() => {
     void fetchList();
@@ -43,37 +44,39 @@ const NotificationsPanel: React.FC<{ id: string; onClose: () => void }> = ({
       aria-labelledby={titleId}
       aria-describedby={descriptionId}
       tabIndex={-1}
-      className="glass-card absolute right-0 z-50 mt-2 flex max-h-[min(80vh,36rem)] w-96 max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-2xl text-white shadow-[0_24px_80px_rgba(0,0,0,0.55)]"
+      className="glass-card absolute right-0 mt-2 w-96 max-w-[calc(100vw-2rem)] rounded-xl shadow-2xl shadow-black/40 z-50 text-white"
     >
-      <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-white/10 bg-[#0A0F1A]/90 p-4 backdrop-blur-xl">
-        <div className="min-w-0">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-cyan-300">
-            Inbox
-          </p>
-          <h2 id={titleId} className="mt-1 text-lg font-semibold tracking-tight text-white">
-            Notifications
-          </h2>
+      <div className="p-4 border-b border-white/10 flex items-center justify-between gap-2 flex-wrap">
+        <h2 id={titleId} className="text-lg font-bold text-white">
+          Notifications
+        </h2>
+        <div className="flex items-center gap-2">
+          {hasUnread && (
+            <button
+              type="button"
+              aria-label="Mark all notifications as read"
+              onClick={() => void markAllAsRead()}
+              className="shrink-0 rounded-lg px-3 py-1.5 text-sm font-medium text-[#BEC7FE] hover:bg-[#2C4BFD]/20 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#22D3EE] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0A0F1A] transition-colors"
+            >
+              Mark all as read
+            </button>
+          )}
+          <button
+            type="button"
+            ref={closeButtonRef}
+            onClick={onClose}
+            aria-label="Close notifications"
+            className="shrink-0 rounded-lg px-3 py-1.5 text-sm font-medium text-gray-300 hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#22D3EE] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0A0F1A]"
+          >
+            Close
+          </button>
         </div>
-        {unreadCount > 0 && (
-          <span className="shrink-0 rounded-full border border-cyan-300/20 bg-cyan-400/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-cyan-200">
-            {unreadCount} unread
-          </span>
-        )}
-        <button
-          type="button"
-          ref={closeButtonRef}
-          onClick={onClose}
-          aria-label="Close notifications"
-          className="shrink-0 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-medium text-slate-300 transition-colors hover:border-white/20 hover:bg-white/[0.08] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2C4BFD] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0A0F1A]"
-        >
-          Close
-        </button>
       </div>
       <p id={descriptionId} className="sr-only">
         Review notifications and mark unread items as read.
       </p>
 
-      <div className="max-h-80 min-h-[200px] flex-1 overflow-auto">
+      <div className="max-h-80 overflow-auto min-h-[200px]">
         {loadingList && (
           <LoadingState message="Loading notifications..." variant="skeleton" skeletonLines={4} className="p-4" />
         )}
@@ -88,9 +91,9 @@ const NotificationsPanel: React.FC<{ id: string; onClose: () => void }> = ({
         )}
         {!loadingList && !errorList && list.length === 0 && (
           <EmptyState
+            variant="offline"
             title="No notifications"
             message="You're all caught up! New notifications will appear here."
-            icon={<Clock className="h-12 w-12 text-gray-300 dark:text-gray-700 mb-4" />}
             className="p-4"
           />
         )}
@@ -99,29 +102,21 @@ const NotificationsPanel: React.FC<{ id: string; onClose: () => void }> = ({
             {list.map((n) => (
               <div
                 key={n.id}
-                className={`flex items-start justify-between gap-3 border-b border-white/[0.06] p-4 transition-colors last:border-b-0 ${n.read ? 'opacity-60' : 'bg-cyan-400/[0.035]'}`}
+                className={`p-4 border-b border-white/10 last:border-b-0 flex items-start justify-between gap-3 ${n.read ? 'opacity-60' : ''}`}
               >
                 <div className="min-w-0">
-                  <div className="flex items-center gap-2 font-medium text-slate-100">
-                    {!n.read && (
-                      <>
-                        <span className="h-2 w-2 shrink-0 rounded-full bg-cyan-300 shadow-[0_0_10px_rgba(103,232,249,0.75)]" aria-hidden />
-                        <span className="sr-only">Unread notification</span>
-                      </>
-                    )}
-                    <span className="truncate">{n.title}</span>
-                  </div>
-                  <div className="mt-1 text-sm leading-relaxed text-slate-400">{n.message}</div>
-                  <div className="mt-2 text-[11px] text-slate-500">
+                  <div className="font-semibold text-white">{n.title}</div>
+                  <div className="text-sm text-gray-300">{n.message}</div>
+                  <div className="text-xs text-gray-400 mt-1">
                     {new Date(n.createdAt).toLocaleString()}
                   </div>
                 </div>
                 {!n.read && (
                   <button
                     type="button"
-                    aria-label={`Mark notification “${n.title}” as read`}
+                    aria-label={`Mark notification "${n.title}" as read`}
                     onClick={() => markAsRead(n.id)}
-                    className="shrink-0 rounded-lg border border-white/10 bg-white/[0.04] p-2 text-cyan-200 transition-colors hover:border-cyan-300/30 hover:bg-cyan-400/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2C4BFD] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0A0F1A]"
+                    className="shrink-0 p-2 rounded-lg text-[#22D3EE] hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#22D3EE] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0A0F1A]"
                   >
                     <Check className="w-4 h-4" aria-hidden />
                   </button>
