@@ -1,8 +1,9 @@
 import { useEffect } from 'react';
 import { useWalletStore } from '../store/useWalletStore';
 import { useAuthStore } from '../store/useAuthStore';
-import { Loader2, AlertCircle, LogOut, Wallet, ShieldCheck, RefreshCw } from 'lucide-react';
+import { Loader2, LogOut, Wallet, ShieldCheck, RefreshCw } from 'lucide-react';
 import clsx from 'clsx';
+import NetworkMismatchCard from './NetworkMismatchCard';
 
 const focusRing =
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2C4BFD] focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-900';
@@ -37,13 +38,7 @@ const WalletConnect = () => {
     return (
       <div className="flex flex-col gap-3 sm:gap-4">
         {networkMismatch && (
-          <div
-            className="hidden md:flex items-center text-red-600 dark:text-red-400 text-sm font-medium bg-red-50 dark:bg-red-900/20 px-2 py-1 rounded"
-            role="status"
-          >
-            <AlertCircle className="w-4 h-4 mr-1 shrink-0" aria-hidden />
-            Switch to Testnet in Freighter
-          </div>
+          <NetworkMismatchCard networkMismatch={networkMismatch} />
         )}
 
         <div className="flex flex-col sm:flex-row items-stretch gap-3">
