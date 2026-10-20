@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import Navbar from './components/Navbar';
+import CommandPalette from './components/CommandPalette';
 import Landing from './pages/Landing';
 import RouteFallback from './components/RouteFallback';
 import LazyBoundary from './components/LazyBoundary';
@@ -17,6 +18,7 @@ function App() {
   return (
     <div className="min-h-screen bg-[#0A0F1A] font-sans text-[#F3F4F6]">
       <Navbar />
+      <CommandPalette />
       <LazyBoundary>
         <Suspense fallback={<RouteFallback />}>
           <Routes>
