@@ -1,37 +1,71 @@
 import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import NetworkMismatchCard from './NetworkMismatchCard';
+import { useWalletStore } from '../store/useWalletStore';
 
 describe('NetworkMismatchCard', () => {
-  it('renders only when the wallet network does not match', () => {
-    const { rerender } = render(<NetworkMismatchCard networkMismatch={false} />);
-    expect(screen.queryByRole('status')).not.toBeInTheDocument();
-
-    rerender(<NetworkMismatchCard networkMismatch />);
-    expect(screen.getByRole('status')).toHaveTextContent('Switch to Testnet in Freighter');
+  beforeEach(() => {
+    useWalletStore.setState({
+      status: 'idle',
+      publicKey: null,
+      network: null,
+      networkMismatch: false,
+      checkConnection: vi.fn().mockResolvedValue(undefined),
+    });
   });
 
-  it('shows network switching help when requested', () => {
-    render(<NetworkMismatchCard networkMismatch />);
+  it('renders only when a connected wallet has a network mismatch', () => {
+    const { rerender } = render(<NetworkMismatchCard />);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 
-    const helpButton = screen.getByRole('button', { name: 'Why am I seeing this?' });
-    expect(helpButton).toHaveAttribute('aria-expanded', 'false');
-    expect(screen.queryByText(/This app uses Stellar Testnet/)).not.toBeInTheDocument();
+    useWalletStore.setState({
+      status: 'connected',
+      publicKey: 'GTEST1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ',
+      network: 'PUBLIC',
+      networkMismatch: true,
+    });
+    rerender(<NetworkMismatchCard />);
 
-    fireEvent.click(helpButton);
+    expect(screen.getByRole('alert')).toHaveTextContent('Freighter is on the wrong network');
+    expect(screen.getByRole('button', { name: 'Re-check network' })).toBeInTheDocument();
+  });
 
-    expect(screen.getByRole('button', { name: 'Hide help' })).toHaveAttribute(
-      'aria-expanded',
-      'true'
+  it('re-checks the wallet network when requested', () => {
+    const checkConnection = vi.fn().mockResolvedValue(undefined);
+    useWalletStore.setState({
+      status: 'connected',
+      publicKey: 'GTEST1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ',
+      network: 'PUBLIC',
+      networkMismatch: true,
+      checkConnection,
+    });
+    render(<NetworkMismatchCard />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Re-check network' }));
+
+    expect(checkConnection).toHaveBeenCalledOnce();
+  });
+
+  it('provides help links and dismisses the warning', () => {
+    useWalletStore.setState({
+      status: 'connected',
+      publicKey: 'GTEST1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ',
+      network: 'PUBLIC',
+      networkMismatch: true,
+    });
+    render(<NetworkMismatchCard />);
+
+    expect(screen.getByRole('link', { name: 'Freighter network guide' })).toHaveAttribute(
+      'target',
+      '_blank'
     );
-    expect(screen.getByText(/This app uses Stellar Testnet/)).toBeInTheDocument();
-  });
+    expect(screen.getByRole('link', { name: 'About Stellar networks' })).toHaveAttribute(
+      'target',
+      '_blank'
+    );
 
-  it('dismisses the network warning', () => {
-    render(<NetworkMismatchCard networkMismatch />);
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
 
-    fireEvent.click(screen.getByRole('button', { name: 'Dismiss network warning' }));
-
-    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 });
